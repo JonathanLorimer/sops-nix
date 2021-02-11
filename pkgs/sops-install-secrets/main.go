@@ -627,9 +627,9 @@ func installSecrets(args []string) error {
 			return fmt.Errorf("Error setting up gpg keyring: %w", err)
 		}
 		defer keyring.Remove()
-	} else opts.keySource == LocalKey && manifest.GnupgHome != "" {
+	} else if opts.keySource == LocalKey && manifest.GnupgHome != "" {
 		os.Setenv("GNUPGHOME", manifest.GnupgHome)
-	} else opts.keySource == AWS {
+	} else if opts.keySource == AWS {
     // find .sops.yaml and call mozilla kms stuff
   }
 
