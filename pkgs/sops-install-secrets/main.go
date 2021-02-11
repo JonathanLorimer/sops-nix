@@ -21,7 +21,7 @@ import (
 
 	"github.com/mozilla-services/yaml"
 	"go.mozilla.org/sops/v3/decrypt"
-  "go.mozilla.org/sops/v3/kms"
+  "go.mozilla.org/sops/v3/keysource"
 	"golang.org/x/sys/unix"
 )
 
@@ -96,10 +96,8 @@ const (
 type KeySource string
 
 const (
-	AWS      KeySource = "aws"
-	// GCP      KeySource = "gcp"
-	// Vault    KeySource = "vault"
-	LocalKey KeySource = "local-key"
+	Managed  KeySource = "managed"
+	Local    KeySource = "local"
 )
 
 type options struct {
@@ -566,13 +564,13 @@ func parseFlags(args []string) (*options, error) {
 	}
 
 	var keySource string
-  fs.StringVar(&keySource, "key-source", "local-key", `Choose the key provider (possible values: "local-key","aws") note: any choice other than local uses an external key management service`)
+  fs.StringVar(&keySource, "key-source", "local", `Choose the key provider (possible values: "local","managed") note: any choice other than local uses an external key management service`)
 	if err := fs.Parse(args[1:]); err != nil {
 		return nil, err
 	}
 
 	switch KeySource(keySource) {
-	case AWS, LocalKey:
+	case Managed, Local:
 		opts.keySource = KeySource(keySource)
 	default:
 		return nil, fmt.Errorf("Invalid value provided for -key-source flag: %s", opts.keySource)
@@ -629,9 +627,7 @@ func installSecrets(args []string) error {
 		defer keyring.Remove()
 	} else if opts.keySource == LocalKey && manifest.GnupgHome != "" {
 		os.Setenv("GNUPGHOME", manifest.GnupgHome)
-	} else if opts.keySource == AWS {
-    // find .sops.yaml and call mozilla kms stuff
-  }
+	}
 
 	if err := decryptSecrets(manifest.Secrets); err != nil {
 		return err
