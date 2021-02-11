@@ -21,6 +21,7 @@ import (
 
 	"github.com/mozilla-services/yaml"
 	"go.mozilla.org/sops/v3/decrypt"
+  "go.mozilla.org/sops/v3/kms"
 	"golang.org/x/sys/unix"
 )
 
@@ -92,8 +93,18 @@ const (
 	Off      CheckMode = "off"
 )
 
+type KeySource string
+
+const (
+	AWS      KeySource = "aws"
+	// GCP      KeySource = "gcp"
+	// Vault    KeySource = "vault"
+	LocalKey KeySource = "local-key"
+)
+
 type options struct {
 	checkMode CheckMode
+	keySource KeySource
 	manifest  string
 }
 
@@ -234,7 +245,7 @@ func decryptSecret(s *secret, sourceFiles map[string]plainData) error {
 		strVal, ok := val.(string)
 		if !ok {
 			return fmt.Errorf("The value of key '%s' in '%s' is not a string", s.Key, s.SopsFile)
-		} 
+		}
 		s.value = []byte(strVal)
 	}
 	sourceFiles[s.SopsFile] = sourceFile
@@ -554,6 +565,19 @@ func parseFlags(args []string) (*options, error) {
 		return nil, fmt.Errorf("Invalid value provided for -check-mode flag: %s", opts.checkMode)
 	}
 
+	var keySource string
+  fs.StringVar(&keySource, "key-source", "local-key", `Choose the key provider (possible values: "local-key","aws") note: any choice other than local uses an external key management service`)
+	if err := fs.Parse(args[1:]); err != nil {
+		return nil, err
+	}
+
+	switch KeySource(keySource) {
+	case AWS, LocalKey:
+		opts.keySource = KeySource(keySource)
+	default:
+		return nil, fmt.Errorf("Invalid value provided for -key-source flag: %s", opts.keySource)
+	}
+
 	if fs.NArg() != 1 {
 		flag.Usage()
 		return nil, flag.ErrHelp
@@ -596,15 +620,18 @@ func installSecrets(args []string) error {
 		return fmt.Errorf("Failed to mount filesystem for secrets: %w", err)
 	}
 
-	if len(manifest.SSHKeyPaths) != 0 {
+
+	if opts.keySource == LocalKey && len(manifest.SSHKeyPaths) != 0 {
 		keyring, err := setupGPGKeyring(manifest.SSHKeyPaths, manifest.SecretsMountPoint)
 		if err != nil {
 			return fmt.Errorf("Error setting up gpg keyring: %w", err)
 		}
 		defer keyring.Remove()
-	} else if manifest.GnupgHome != "" {
+	} else opts.keySource == LocalKey && manifest.GnupgHome != "" {
 		os.Setenv("GNUPGHOME", manifest.GnupgHome)
-	}
+	} else opts.keySource == AWS {
+    // find .sops.yaml and call mozilla kms stuff
+  }
 
 	if err := decryptSecrets(manifest.Secrets); err != nil {
 		return err
